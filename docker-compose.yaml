@@ -1,0 +1,44 @@
+---
+version: '3.7'
+
+services:
+  wait:
+    image: dokku/wait:0.4.4
+
+  postgres:
+    image: postgres:14.1
+    environment:
+      POSTGRES_PASSWORD: P@ssw0rd
+      POSTGRES_DB: boundary
+
+  boundary:
+    image: hashicorp/boundary:0.7.3
+    environment:
+      SKIP_SETCAP: 1
+      BOUNDARY_POSTGRES_URL: postgresql://postgres:P@ssw0rd@postgres:5432/boundary?sslmode=disable
+    ports:
+      - 127.0.0.1:9200:9200
+      - 127.0.0.1:9201:9201
+      - 127.0.0.1:9202:9202
+
+  vault:
+    image: vault:1.9.1
+    environment:
+      SKIP_SETCAP: 1
+      VAULT_ADDR: http://vault:8200
+      VAULT_DISABLE_MLOCK: "true"
+      VAULT_DEV_ROOT_TOKEN_ID: P@ssw0rd
+    ports:
+      - 127.0.0.1:8200:8200
+
+  foo-postgres:
+    image: postgres:14.1
+    environment:
+      POSTGRES_PASSWORD: P@ssw0rd
+      POSTGRES_DB: foo
+
+  bar-postgres:
+    image: postgres:14.1
+    environment:
+      POSTGRES_PASSWORD: P@ssw0rd
+      POSTGRES_DB: bar
