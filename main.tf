@@ -42,24 +42,24 @@ resource "vault_mount" "database" {
   type = "database"
 }
 
-data "vault_generic_secret" "neu" {
-  path = "secret/neu"
+data "vault_generic_secret" "foo" {
+  path = "secret/foo"
 }
 
-resource "vault_database_secret_backend_connection" "neu" {
+resource "vault_database_secret_backend_connection" "foo" {
   backend       = vault_mount.database.path
-  name          = "neu"
+  name          = "foo"
   allowed_roles = ["foo-reader", "foo-dba"]
 
   postgresql {
-    connection_url = "postgres://${data.vault_generic_secret.neu.data["POSTGRES_USER"]}:${data.vault_generic_secret.neu.data["POSTGRES_PASSWORD"]}@foo-postgres:5432/neu?sslmode=disable"
+    connection_url = "postgres://${data.vault_generic_secret.foo.data["POSTGRES_USER"]}:${data.vault_generic_secret.foo.data["POSTGRES_PASSWORD"]}@foo-postgres:5432/foo?sslmode=disable"
   }
 }
 
-resource "vault_database_secret_backend_role" "neu_reader" {
+resource "vault_database_secret_backend_role" "foo_reader" {
   backend     = vault_mount.database.path
   name        = "foo-reader"
-  db_name     = vault_database_secret_backend_connection.neu.name
+  db_name     = vault_database_secret_backend_connection.foo.name
   default_ttl = 1800
   max_ttl     = 3600
 
@@ -69,10 +69,10 @@ resource "vault_database_secret_backend_role" "neu_reader" {
   ]
 }
 
-resource "vault_database_secret_backend_role" "neu_dba" {
+resource "vault_database_secret_backend_role" "foo_dba" {
   backend = vault_mount.database.path
   name    = "foo-dba"
-  db_name = vault_database_secret_backend_connection.neu.name
+  db_name = vault_database_secret_backend_connection.foo.name
 
   creation_statements = [
     "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' inherit",
@@ -100,9 +100,9 @@ resource "boundary_scope" "fazz_org" {
   auto_create_default_role = true
 }
 
-resource "boundary_scope" "neu_project" {
-  name                   = "neu"
-  description            = "Neu Project"
+resource "boundary_scope" "foo_project" {
+  name                   = "foo"
+  description            = "foo Project"
   scope_id               = boundary_scope.fazz_org.id
   auto_create_admin_role = true
 }
@@ -114,38 +114,38 @@ resource "boundary_scope" "post_project" {
   auto_create_admin_role = true
 }
 
-resource "boundary_host_catalog" "neu_default" {
+resource "boundary_host_catalog" "foo_default" {
   name        = "default"
-  description = "Neu default host catalog"
-  scope_id    = boundary_scope.neu_project.id
+  description = "foo default host catalog"
+  scope_id    = boundary_scope.foo_project.id
   type        = "static"
 }
 
-resource "boundary_host" "neu_postgres_0" {
+resource "boundary_host" "foo_postgres_0" {
   name            = "foo-postgres-0"
-  description     = "Neu Postgres instance"
+  description     = "foo Postgres instance"
   address         = "foo-postgres"
-  host_catalog_id = boundary_host_catalog.neu_default.id
+  host_catalog_id = boundary_host_catalog.foo_default.id
   type            = "static"
 }
 
-resource "boundary_host_set" "neu_postgres" {
+resource "boundary_host_set" "foo_postgres" {
   name            = "foo-postgres"
-  host_catalog_id = boundary_host_catalog.neu_default.id
+  host_catalog_id = boundary_host_catalog.foo_default.id
   type            = "static"
 
   host_ids = [
-    boundary_host.neu_postgres_0.id,
+    boundary_host.foo_postgres_0.id,
   ]
 }
 
-resource "boundary_target" "neu_postgres" {
+resource "boundary_target" "foo_postgres" {
   name         = "foo-postgres"
   type         = "tcp"
   default_port = "5432"
-  scope_id     = boundary_scope.neu_project.id
+  scope_id     = boundary_scope.foo_project.id
 
   host_source_ids = [
-    boundary_host_set.neu_postgres.id
+    boundary_host_set.foo_postgres.id
   ]
 }
