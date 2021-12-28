@@ -36,9 +36,3 @@ services:
     environment:
       POSTGRES_PASSWORD: P@ssw0rd
       POSTGRES_DB: foo
-
-  bar-postgres:
-    image: postgres:14.1
-    environment:
-      POSTGRES_PASSWORD: P@ssw0rd
-      POSTGRES_DB: bar
