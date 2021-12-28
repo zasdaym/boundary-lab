@@ -21,3 +21,5 @@ You can run `./init.sh start` run all the necessary components. The script will 
 3. Run the Boundary and Vault containers.
 4. Write credentials to access `foo-postgres` to Vault. The credentials will be used to create just-in-time credentials.
 5. Create necessary components on Boundary and Vault via Terraform.
+6. Run `. ./source_vars.sh` to set necessary environment variables.
+7. Open the Boundary web UI on http://localhost:9200 with user `admin` and password specified in `terraform.tfvars.json`.
