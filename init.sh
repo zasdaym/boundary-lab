@@ -5,7 +5,7 @@ set -o errexit
 up() {
   docker-compose up --detach foo-postgres
 	docker-compose run --rm wait -c foo-postgres:5432
-	docker-compose exec -T foo-postgres PGPASSWORD=P@ssw0rd psql -h 127.0.0.1 -U postgres foo < foo.sql
+	docker-compose exec -T --env PGPASSWORD=P@ssw0rd foo-postgres psql -h 127.0.0.1 -U postgres foo < foo.sql
 
 	docker-compose up --detach postgres
 	docker-compose run --rm wait -c postgres:5432
