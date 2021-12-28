@@ -80,6 +80,17 @@ resource "vault_database_secret_backend_role" "foo_dba" {
   ]
 }
 
+resource "vault_token" "boundary" {
+  display_name = "boundary-controller"
+  renewable    = true
+  no_parent    = true
+  period       = "24h"
+
+  policies = [
+    vault_policy.boundary.name,
+  ]
+}
+
 provider "boundary" {
   addr                            = var.boundary_addr
   auth_method_id                  = var.boundary_auth_method_id
@@ -88,42 +99,143 @@ provider "boundary" {
 }
 
 resource "boundary_scope" "global" {
-  global_scope = true
   scope_id     = "global"
+  global_scope = true
 }
 
 resource "boundary_scope" "fazz_org" {
-  name                     = "fazz"
-  description              = "Fazz Organization"
   scope_id                 = boundary_scope.global.id
+  name                     = "fazz"
+  description              = "Fazz organization"
   auto_create_admin_role   = true
   auto_create_default_role = true
 }
 
-resource "boundary_scope" "foo_project" {
-  name                   = "foo"
-  description            = "foo Project"
-  scope_id               = boundary_scope.fazz_org.id
-  auto_create_admin_role = true
+resource "boundary_auth_method" "fazz_userpass" {
+  scope_id = boundary_scope.fazz_org.id
+  type     = "password"
 }
 
-resource "boundary_scope" "post_project" {
-  name                   = "post"
-  description            = "POST. Project"
-  scope_id               = boundary_scope.fazz_org.id
-  auto_create_admin_role = true
+resource "boundary_scope" "foo_project" {
+  scope_id                 = boundary_scope.fazz_org.id
+  name                     = "foo"
+  description              = "Foo project"
+  auto_create_admin_role   = true
+  auto_create_default_role = true
+}
+
+locals {
+  foo_dbas = [
+    "arthur",
+    "thomas",
+  ]
+
+  foo_engineers = [
+    "alvin",
+    "zasda",
+  ]
+}
+
+resource "boundary_account" "foo_dbas" {
+  for_each       = toset(local.foo_dbas)
+  auth_method_id = boundary_auth_method.fazz_userpass.id
+  type           = "password"
+  login_name     = each.key
+  password       = "P@ssw0rd"
+}
+
+resource "boundary_user" "foo_dbas" {
+  for_each    = boundary_account.foo_dbas
+  scope_id    = boundary_scope.fazz_org.id
+  account_ids = [each.value.id]
+}
+
+resource "boundary_group" "foo_dba" {
+  scope_id    = boundary_scope.fazz_org.id
+  name        = "foo-dba"
+  description = "Foo DBA"
+  member_ids  = [for user in boundary_user.foo_dbas : user.id]
+}
+
+resource "boundary_role" "foo_dba" {
+  scope_id       = boundary_scope.fazz_org.id
+  name           = "foo-dba"
+  grant_scope_id = boundary_scope.foo_project.id
+
+  grant_strings = [
+    "id=${boundary_target.foo_postgres_dba.id};actions=read,authorize-session",
+    "id=*;type=target;actions=list",
+    "id=*;type=session;actions=list",
+  ]
+
+  principal_ids = [boundary_group.foo_dba.id]
+}
+
+resource "boundary_account" "foo_engineers" {
+  for_each       = toset(local.foo_engineers)
+  auth_method_id = boundary_auth_method.fazz_userpass.id
+  type           = "password"
+  login_name     = each.key
+  password       = "P@ssw0rd"
+}
+
+resource "boundary_user" "foo_engineers" {
+  for_each    = boundary_account.foo_engineers
+  scope_id    = boundary_scope.fazz_org.id
+  account_ids = [each.value.id]
+}
+
+resource "boundary_group" "foo_engineer" {
+  scope_id    = boundary_scope.fazz_org.id
+  name        = "foo-engineer"
+  description = "Foo Engineer"
+  member_ids  = [for user in boundary_user.foo_engineers : user.id]
+}
+
+resource "boundary_role" "foo_engineer" {
+  scope_id       = boundary_scope.fazz_org.id
+  name           = "foo-engineer"
+  grant_scope_id = boundary_scope.foo_project.id
+
+  grant_strings = [
+    "id=${boundary_target.foo_postgres_reader.id};actions=read,authorize-session",
+    "id=*;type=target;actions=list",
+    "id=*;type=session;actions=list",
+  ]
+
+  principal_ids = [boundary_group.foo_engineer.id]
+}
+
+resource "boundary_credential_store_vault" "primary" {
+  scope_id = boundary_scope.foo_project.id
+  name     = "Primary Vault"
+  address  = "http://vault:8200"
+  token    = vault_token.boundary.client_token
+}
+
+resource "boundary_credential_library_vault" "foo_dba" {
+  name                = "foo-dba"
+  credential_store_id = boundary_credential_store_vault.primary.id
+  path                = "database/creds/foo-dba"
+  http_method         = "GET"
+}
+
+resource "boundary_credential_library_vault" "foo_reader" {
+  name                = "foo-reader"
+  credential_store_id = boundary_credential_store_vault.primary.id
+  path                = "database/creds/foo-reader"
+  http_method         = "GET"
 }
 
 resource "boundary_host_catalog" "foo_default" {
-  name        = "default"
-  description = "foo default host catalog"
   scope_id    = boundary_scope.foo_project.id
+  name        = "default"
+  description = "Foo default host catalog"
   type        = "static"
 }
 
 resource "boundary_host" "foo_postgres_0" {
   name            = "foo-postgres-0"
-  description     = "foo Postgres instance"
   address         = "foo-postgres"
   host_catalog_id = boundary_host_catalog.foo_default.id
   type            = "static"
@@ -139,13 +251,35 @@ resource "boundary_host_set" "foo_postgres" {
   ]
 }
 
-resource "boundary_target" "foo_postgres" {
-  name         = "foo-postgres"
-  type         = "tcp"
-  default_port = "5432"
-  scope_id     = boundary_scope.foo_project.id
+resource "boundary_target" "foo_postgres_dba" {
+  scope_id                 = boundary_scope.foo_project.id
+  name                     = "foo-postgres-dba"
+  type                     = "tcp"
+  default_port             = "5432"
+  session_connection_limit = 100
 
   host_source_ids = [
-    boundary_host_set.foo_postgres.id
+    boundary_host_set.foo_postgres.id,
+  ]
+
+  application_credential_source_ids = [
+    boundary_credential_library_vault.foo_dba.id,
   ]
 }
+
+resource "boundary_target" "foo_postgres_reader" {
+  scope_id                 = boundary_scope.foo_project.id
+  name                     = "foo-postgres-reader"
+  type                     = "tcp"
+  default_port             = "5432"
+  session_connection_limit = 100
+
+  host_source_ids = [
+    boundary_host_set.foo_postgres.id,
+  ]
+
+  application_credential_source_ids = [
+    boundary_credential_library_vault.foo_reader.id,
+  ]
+}
+
